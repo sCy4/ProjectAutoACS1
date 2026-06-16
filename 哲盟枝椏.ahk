@@ -20,10 +20,61 @@ global MSG_FIELD_MONITOR := "若您要看某派件員的簽收監控，請先用
 ; 清單編輯：沒選取列就按「保存修改／刪除此項」時的提示
 global MSG_PICK_ROW := "請先在上方清單中選擇你要修改／刪除的項目。"
 ; 刪除群組的二次確認；{1} 會替換成群組名稱
-global MSG_DELETE_GROUP := "確定要刪除群組「{1}」？`n群組內的所有項目也會一併刪除。"
+global MSG_DELETE_GROUP := "確定要刪除群組「{1}」？"
 ; 新增／重新命名群組的輸入框提示
 global MSG_ADD_GROUP_PROMPT    := "請輸入新群組名稱："
 global MSG_RENAME_GROUP_PROMPT := "請輸入新的群組名稱："
+
+; --- 介面顯示文字（選單與設定表上的文字都集中在這裡，方便日後維護）---
+; 右鍵選單的分類標題（◎ 開頭）
+global MENU_HDR_SIGN    := "◇ 快速簽收"
+global MENU_HDR_PROBLEM := "◇ 快速問題"
+global MENU_HDR_MONITOR := "◇ 簽收監控人員捷徑"
+global MENU_HDR_PASTE   := "◇ 貼上文本"
+global MENU_EMPTY       := "（尚未設定任何項目，請從右下角圖示開啟設定）"
+
+; 設定視窗標題與分頁名稱
+global UI_SETTINGS_TITLE := MSG_TITLE " - 設定"
+global TAB_SIGN    := "快速簽收"
+global TAB_PROBLEM := "快速問題"
+global TAB_MONITOR := "簽收監控人員捷徑"
+global TAB_PASTE   := "貼上文本"
+
+; 各分頁頂端的用法說明
+global HINT_SIGN    := "用法：先點「簽收」視窗的運單號碼欄，再點項目填入簽收內容並送出。"
+global HINT_PROBLEM := "用法：先點「問題件管理」視窗的運單號碼欄，再點項目帶入問題代碼。"
+global HINT_MONITOR := "用法：先點「簽收監控」視窗的派件員欄，選群組後再點人員查詢。"
+global HINT_PASTE   := "用法：點標題即把內容貼到游標所在的任何輸入框，不受輸入法影響。"
+
+; 設定表的欄位標籤（清單第一欄固定為「標題」，第二欄各分頁不同）
+global LBL_TITLE       := "標題"
+global LBL_COL_SIGN    := "輸入文字"
+global LBL_COL_PROBLEM := "代碼"
+global LBL_COL_MONITOR := "代碼"
+global LBL_COL_PASTE   := "內容"
+global LBL_GROUP_UNNAMED := "（未命名）"   ; 群組未命名時，群組清單顯示用
+
+; 設定表的按鈕文字
+global BTN_ADD        := "新增"
+global BTN_SAVE       := "保存修改"
+global BTN_DELETE     := "刪除此項"
+global BTN_UP         := "▲"
+global BTN_DOWN       := "▼"
+global BTN_GRP_ADD    := "新增群組"
+global BTN_GRP_RENAME := "重新命名"
+global BTN_GRP_DELETE := "刪除群組"
+global BTN_RESTORE    := "本頁還原預設"
+global BTN_CANCEL     := "取消"
+global BTN_CONFIRM    := "確認"
+
+; 群組管理對話框／提示框的標題
+global TITLE_GRP_ADD    := "新增群組"
+global TITLE_GRP_RENAME := "重新命名群組"
+global TITLE_GRP_DELETE := "刪除群組"
+global TITLE_HINT       := "提示"
+
+; 系統列(托盤)選單文字
+global TRAY_SETTINGS    := "設定"
 
 ; --- 防錯偵測目標（可自由修改）---
 ; 各功能執行前，游標必須位於「指定 ClassName 的 Edit」，且該 Edit 位於「標題含指定關鍵字的 Window」內，才會執行
@@ -144,7 +195,7 @@ BuildMenu() {
 
     ; ◎ 快速簽收
     if HasVisible(g_config.sign) {
-        AddHeader(AnythingMenu, "◎ 快速簽收")
+        AddHeader(AnythingMenu, MENU_HDR_SIGN)
         for it in g_config.sign {
             if (Trim(it.title) = "")
                 continue
@@ -157,7 +208,7 @@ BuildMenu() {
     if HasVisible(g_config.problem) {
         if anyAdded
             AnythingMenu.Add()
-        AddHeader(AnythingMenu, "◎ 快速問題")
+        AddHeader(AnythingMenu, MENU_HDR_PROBLEM)
         for it in g_config.problem {
             if (Trim(it.title) = "")
                 continue
@@ -170,7 +221,7 @@ BuildMenu() {
     if MonitorHasVisible(g_config.monitor) {
         if anyAdded
             AnythingMenu.Add()
-        AddHeader(AnythingMenu, "◎ 簽收監控人員捷徑")
+        AddHeader(AnythingMenu, MENU_HDR_MONITOR)
         for grp in g_config.monitor {
             if (Trim(grp.name) = "" || !HasVisible(grp.items))
                 continue
@@ -197,12 +248,12 @@ BuildMenu() {
             sub.Add(it.title, Action_PasteText.Bind(it.code))
         }
         g_subMenus.Push(sub)
-        AnythingMenu.Add("◎ 貼上文本", sub)
+        AnythingMenu.Add(MENU_HDR_PASTE, sub)
         anyAdded := true
     }
 
     if !anyAdded
-        AddHeader(AnythingMenu, "（尚未設定任何項目，請從右下角圖示開啟設定）")
+        AddHeader(AnythingMenu, MENU_EMPTY)
 }
 
 ; 加入一個不可點選的分類標題
@@ -421,52 +472,49 @@ ShowSettings(*) {
 
     g_work := CloneConfig(g_config)
 
-    g_settingsGui := Gui("+AlwaysOnTop", MSG_TITLE " - 設定")
+    g_settingsGui := Gui("+AlwaysOnTop", UI_SETTINGS_TITLE)
     g_settingsGui.BackColor := "FFFFFF"
     g_settingsGui.SetFont("s10 c" CLR_TEXT, UI_FONT)
 
     g_tab := g_settingsGui.Add("Tab3", "x16 y16 w568 h508 -Background",
-        ["快速簽收", "快速問題", "簽收監控人員捷徑", "貼上文本"])
+        [TAB_SIGN, TAB_PROBLEM, TAB_MONITOR, TAB_PASTE])
     g_tab.SetFont("s10 bold", UI_FONT)     ; 分頁標題加粗
 
     ; --- 分頁1：快速簽收 ---
     g_tab.UseTab(1)
-    AddHint(g_settingsGui, 32, 50, 536,
-        "用法：先點「簽收」視窗的運單號碼欄，再點項目填入簽收內容並送出。")
-    g_signEditor := ListEditor(g_settingsGui, 32, 76, 536, 264, "輸入文字")
+    AddHint(g_settingsGui, 32, 50, 536, HINT_SIGN)
+    g_signEditor := ListEditor(g_settingsGui, 32, 76, 536, 264, LBL_COL_SIGN)
     g_signEditor.SetModel(g_work.sign)
 
     ; --- 分頁2：快速問題 ---
     g_tab.UseTab(2)
-    AddHint(g_settingsGui, 32, 50, 536,
-        "用法：先點「問題件管理」視窗的運單號碼欄，再點項目帶入問題代碼。")
-    g_problemEditor := ListEditor(g_settingsGui, 32, 76, 536, 264, "代碼")
+    AddHint(g_settingsGui, 32, 50, 536, HINT_PROBLEM)
+    g_problemEditor := ListEditor(g_settingsGui, 32, 76, 536, 264, LBL_COL_PROBLEM)
     g_problemEditor.SetModel(g_work.problem)
 
     ; --- 分頁3：簽收監控人員捷徑 ---
     g_tab.UseTab(3)
-    AddHint(g_settingsGui, 32, 50, 536,
-        "用法：先點「簽收監控」視窗的派件員欄，選群組後再點人員查詢。")
-    g_groupListBox := g_settingsGui.Add("ListBox", "x32 y76 w384 h106 BackgroundWhite", [])
+    AddHint(g_settingsGui, 32, 50, 536, HINT_MONITOR)
+    ; +0x100 = LBS_NOINTEGRALHEIGHT：強制清單高度等於 h106，下緣才會和右側三顆按鈕齊平（同組元素）
+    g_groupListBox := g_settingsGui.Add("ListBox", "x32 y76 w384 h106 +0x100 BackgroundWhite", [])
     g_groupListBox.OnEvent("Change", (*) => Monitor_OnGroupSelect())
-    MakeButton(g_settingsGui, 428, 76, 140, 30, "新增群組").OnEvent("Click", (*) => Monitor_AddGroup())
-    MakeButton(g_settingsGui, 428, 114, 140, 30, "重新命名").OnEvent("Click", (*) => Monitor_RenameGroup())
-    MakeButton(g_settingsGui, 428, 152, 140, 30, "刪除群組", "danger").OnEvent("Click", (*) => Monitor_DeleteGroup())
-    g_monitorEditor := ListEditor(g_settingsGui, 32, 198, 536, 142, "代碼")
+    MakeButton(g_settingsGui, 428, 76, 140, 30, BTN_GRP_ADD).OnEvent("Click", (*) => Monitor_AddGroup())
+    MakeButton(g_settingsGui, 428, 114, 140, 30, BTN_GRP_RENAME).OnEvent("Click", (*) => Monitor_RenameGroup())
+    MakeButton(g_settingsGui, 428, 152, 140, 30, BTN_GRP_DELETE, "danger").OnEvent("Click", (*) => Monitor_DeleteGroup())
+    g_monitorEditor := ListEditor(g_settingsGui, 32, 198, 536, 142, LBL_COL_MONITOR)
     Monitor_RefreshGroups(1)
 
     ; --- 分頁4：貼上文本（內容欄為可多行輸入框）---
     g_tab.UseTab(4)
-    AddHint(g_settingsGui, 32, 50, 536,
-        "用法：點標題即把內容貼到游標所在的任何輸入框，不受輸入法影響。")
-    g_pasteEditor := ListEditor(g_settingsGui, 32, 76, 536, 191, "內容", 96, true)
+    AddHint(g_settingsGui, 32, 50, 536, HINT_PASTE)
+    g_pasteEditor := ListEditor(g_settingsGui, 32, 76, 536, 191, LBL_COL_PASTE, 96, true)
     g_pasteEditor.SetModel(g_work.pastetext)
 
     ; --- 底部共用按鈕（原生按鈕）---
     g_tab.UseTab(0)
-    g_settingsGui.Add("Button", "x16 y540 w130 h34", "本頁還原預設").OnEvent("Click", Settings_RestoreDefault)
-    g_settingsGui.Add("Button", "x396 y540 w90 h34", "取消").OnEvent("Click", Settings_Cancel)
-    g_settingsGui.Add("Button", "x494 y540 w90 h34 Default", "確認").OnEvent("Click", Settings_Confirm)
+    g_settingsGui.Add("Button", "x16 y540 w130 h34", BTN_RESTORE).OnEvent("Click", Settings_RestoreDefault)
+    g_settingsGui.Add("Button", "x396 y540 w90 h34", BTN_CANCEL).OnEvent("Click", Settings_Cancel)
+    g_settingsGui.Add("Button", "x494 y540 w90 h34 Default", BTN_CONFIRM).OnEvent("Click", Settings_Confirm)
 
     g_settingsGui.OnEvent("Close", Settings_Cancel)
     g_settingsGui.OnEvent("Escape", Settings_Cancel)
@@ -539,7 +587,7 @@ Monitor_RefreshGroups(selectIdx := 1) {
     g_groupListBox.Delete()
     names := []
     for grp in g_work.monitor
-        names.Push(grp.name = "" ? "（未命名）" : grp.name)
+        names.Push(grp.name = "" ? LBL_GROUP_UNNAMED : grp.name)
     if names.Length
         g_groupListBox.Add(names)
     if (g_work.monitor.Length > 0) {
@@ -562,7 +610,7 @@ Monitor_OnGroupSelect() {
 Monitor_AddGroup() {
     global g_work, g_settingsGui, MSG_ADD_GROUP_PROMPT
     g_settingsGui.Opt("-AlwaysOnTop")
-    ib := InputBox(MSG_ADD_GROUP_PROMPT, "新增群組", "w300 h130")
+    ib := InputBox(MSG_ADD_GROUP_PROMPT, TITLE_GRP_ADD, "w300 h130")
     g_settingsGui.Opt("+AlwaysOnTop")
     if (ib.Result != "OK")
         return
@@ -579,7 +627,7 @@ Monitor_RenameGroup() {
     if (idx < 1)
         return
     g_settingsGui.Opt("-AlwaysOnTop")
-    ib := InputBox(MSG_RENAME_GROUP_PROMPT, "重新命名群組", "w300 h130", g_work.monitor[idx].name)
+    ib := InputBox(MSG_RENAME_GROUP_PROMPT, TITLE_GRP_RENAME, "w300 h130", g_work.monitor[idx].name)
     g_settingsGui.Opt("+AlwaysOnTop")
     if (ib.Result != "OK")
         return
@@ -596,7 +644,7 @@ Monitor_DeleteGroup() {
     if (idx < 1)
         return
     g_settingsGui.Opt("-AlwaysOnTop")
-    ans := MsgBox(StrReplace(MSG_DELETE_GROUP, "{1}", g_work.monitor[idx].name), "刪除群組", "YesNo Icon!")
+    ans := MsgBox(StrReplace(MSG_DELETE_GROUP, "{1}", g_work.monitor[idx].name), TITLE_GRP_DELETE, "YesNo Icon!")
     g_settingsGui.Opt("+AlwaysOnTop")
     if (ans != "Yes")
         return
@@ -608,7 +656,7 @@ Monitor_DeleteGroup() {
 ; 【系統列(托盤)選單】
 ; ==============================================================================
 SetupTray() {
-    A_TrayMenu.Insert("1&", "設定", (*) => ShowSettings())
+    A_TrayMenu.Insert("1&", TRAY_SETTINGS, (*) => ShowSettings())
     A_TrayMenu.Insert("2&")     ; 分隔線
 }
 
@@ -797,14 +845,14 @@ class ListEditor {
         this.gui := g
 
         ; --- 清單 ---
-        this.lv := g.Add("ListView", "x" x " y" y " w" w " h" lvH " Grid BackgroundWhite", ["標題", col2Label])
-        this.lv.ModifyCol(1, w - 150)
-        this.lv.ModifyCol(2, 126)
+        this.lv := g.Add("ListView", "x" x " y" y " w" w " h" lvH " Grid BackgroundWhite", [LBL_TITLE, col2Label])
+        this.lv.ModifyCol(1, Round(w * 0.4))   ; 標題欄約佔 4 成
+        this.lv.ModifyCol(2, "AutoHdr")        ; 內容欄自動填滿剩餘寬度（會自動扣掉捲軸），右側不留多餘空白
         this.lv.OnEvent("ItemSelect", (*) => this.OnSelect())
 
         ; --- 兩列編輯欄：標題一列、代碼/內容一列（欄位滿版）---
         ly1 := y + lvH + 14
-        g.Add("Text", "x" x " y" ly1 " w" w, "標題")
+        g.Add("Text", "x" x " y" ly1 " w" w, LBL_TITLE)
         this.titleEdit := g.Add("Edit", "x" x " y" (ly1 + 22) " w" w)
 
         ly2 := ly1 + 60
@@ -825,11 +873,11 @@ class ListEditor {
         x3 := x2 + eqW + gap
         x4 := x3 + lastEqW + gap
         x5 := x4 + arrowW + gap
-        MakeButton(g, x1, by, eqW, 32, "新增").OnEvent("Click", (*) => this.AddRow())
-        MakeButton(g, x2, by, eqW, 32, "保存修改").OnEvent("Click", (*) => this.UpdateRow())
-        MakeButton(g, x3, by, lastEqW, 32, "刪除此項", "danger").OnEvent("Click", (*) => this.DeleteRow())
-        MakeButton(g, x4, by, arrowW, 32, "▲").OnEvent("Click", (*) => this.MoveRow(-1))
-        MakeButton(g, x5, by, arrowW, 32, "▼").OnEvent("Click", (*) => this.MoveRow(1))
+        MakeButton(g, x1, by, eqW, 32, BTN_ADD).OnEvent("Click", (*) => this.AddRow())
+        MakeButton(g, x2, by, eqW, 32, BTN_SAVE).OnEvent("Click", (*) => this.UpdateRow())
+        MakeButton(g, x3, by, lastEqW, 32, BTN_DELETE, "danger").OnEvent("Click", (*) => this.DeleteRow())
+        MakeButton(g, x4, by, arrowW, 32, BTN_UP).OnEvent("Click", (*) => this.MoveRow(-1))
+        MakeButton(g, x5, by, arrowW, 32, BTN_DOWN).OnEvent("Click", (*) => this.MoveRow(1))
     }
 
     ; 換綁定的資料陣列並重畫（簽收監控切換群組時會用到）
@@ -844,6 +892,7 @@ class ListEditor {
         this.lv.Delete()
         for it in this.model
             this.lv.Add("", it.title, this.Preview(it.code))   ; 清單只顯示單行預覽（換行壓成空白）
+        this.lv.ModifyCol(2, "AutoHdr")   ; 依目前列數/捲軸狀態重算內容欄寬，確保填滿、右側不留白
     }
 
     ; 清單欄位預覽：把換行壓成空白，避免多行內容在格子裡顯示成方塊
@@ -916,7 +965,7 @@ class ListEditor {
     ; 提示框（暫時取消設定視窗最上層，避免被蓋住）
     Hint(msg) {
         this.gui.Opt("-AlwaysOnTop")
-        MsgBox(msg, "提示", "Icon!")
+        MsgBox(msg, TITLE_HINT, "Icon!")
         this.gui.Opt("+AlwaysOnTop")
     }
 }
