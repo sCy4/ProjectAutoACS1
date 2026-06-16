@@ -34,47 +34,47 @@ global MENU_HDR_PASTE   := "◇ 貼上文本"
 global MENU_EMPTY       := "（尚未設定任何項目，請從右下角圖示開啟設定）"
 
 ; 設定視窗標題與分頁名稱
-global UI_SETTINGS_TITLE := MSG_TITLE " - 設定"
+global UI_SETTINGS_TITLE := MSG_TITLE " - 編輯區"
 global TAB_SIGN    := "快速簽收"
 global TAB_PROBLEM := "快速問題"
 global TAB_MONITOR := "簽收監控人員捷徑"
 global TAB_PASTE   := "貼上文本"
 
 ; 各分頁頂端的用法說明
-global HINT_SIGN    := "用法：先點「簽收」視窗的運單號碼欄，再點項目填入簽收內容並送出。"
-global HINT_PROBLEM := "用法：先點「問題件管理」視窗的運單號碼欄，再點項目帶入問題代碼。"
-global HINT_MONITOR := "用法：先點「簽收監控」視窗的派件員欄，選群組後再點人員查詢。"
-global HINT_PASTE   := "用法：點標題即把內容貼到游標所在的任何輸入框，不受輸入法影響。"
+global HINT_SIGN    := "效果：根據您設定的字串作為簽收類型，自動化簽收動作"
+global HINT_PROBLEM := "效果：根據您設定的代號作為問題件類型，自動化入問題件動作"
+global HINT_MONITOR := "效果：根據您設定的人員編號，在簽收監控中快速選定人員"
+global HINT_PASTE   := "效果：在當前欄位貼上您設定的字串"
 
 ; 設定表的欄位標籤（清單第一欄固定為「標題」，第二欄各分頁不同）
 global LBL_TITLE       := "標題"
-global LBL_COL_SIGN    := "輸入文字"
-global LBL_COL_PROBLEM := "代碼"
-global LBL_COL_MONITOR := "代碼"
-global LBL_COL_PASTE   := "內容"
+global LBL_COL_SIGN    := "簽收類型"
+global LBL_COL_PROBLEM := "問題件類型代號"
+global LBL_COL_MONITOR := "人員編碼"
+global LBL_COL_PASTE   := "文本內容"
 global LBL_GROUP_UNNAMED := "（未命名）"   ; 群組未命名時，群組清單顯示用
 
 ; 設定表的按鈕文字
-global BTN_ADD        := "新增"
+global BTN_ADD        := "新增此項"
 global BTN_SAVE       := "保存修改"
 global BTN_DELETE     := "刪除此項"
 global BTN_UP         := "▲"
 global BTN_DOWN       := "▼"
-global BTN_GRP_ADD    := "新增群組"
-global BTN_GRP_RENAME := "重新命名"
-global BTN_GRP_DELETE := "刪除群組"
+global BTN_GRP_ADD    := "新增人員群組"
+global BTN_GRP_RENAME := "重新命名群組"
+global BTN_GRP_DELETE := "刪除人員群組"
 global BTN_RESTORE    := "本頁還原預設"
 global BTN_CANCEL     := "取消"
 global BTN_CONFIRM    := "確認"
 
 ; 群組管理對話框／提示框的標題
-global TITLE_GRP_ADD    := "新增群組"
+global TITLE_GRP_ADD    := "新增人員群組"
 global TITLE_GRP_RENAME := "重新命名群組"
-global TITLE_GRP_DELETE := "刪除群組"
+global TITLE_GRP_DELETE := "刪除人員群組"
 global TITLE_HINT       := "提示"
 
 ; 系統列(托盤)選單文字
-global TRAY_SETTINGS    := "設定"
+global TRAY_SETTINGS    := "編輯區"
 
 ; --- 防錯偵測目標（可自由修改）---
 ; 各功能執行前，游標必須位於「指定 ClassName 的 Edit」，且該 Edit 位於「標題含指定關鍵字的 Window」內，才會執行
@@ -88,16 +88,14 @@ global INI_PATH := EnvGet("LOCALAPPDATA") "\ACStools\哲盟枝椏.ini"
 
 ; --- 各分類的預設值（第一次使用、或在分頁按「本頁還原預設」時採用）---
 global DEFAULT_SIGN := [
-    {title: "1. 已簽收",            code: "已簽收"},
-    {title: "2. 櫃台簽收",          code: "櫃台簽收"},
-    {title: "3. 已放置客戶指定位置", code: "已放置客戶指定位置"}
+    {title: "已簽收",            code: "已簽收"},
+    {title: "客指定位", code: "已放置客戶指定位置"}
 ]
 global DEFAULT_PROBLEM := [
-    {title: "1. 電話無人接",        code: "01"},
-    {title: "2. 收件人另約派送日期", code: "ct"},
-    {title: "3. 地址錯誤",          code: "97"},
-    {title: "4. 收件人更改派送地址", code: "ca"},
-    {title: "5. 收件人不在家",      code: "36"}
+    {title: "電話無人接",        code: "01"},
+    {title: "另約派送日期", code: "ct"},
+    {title: "更改地址", code: "ca"},
+    {title: "收件人不在家",      code: "36"}
 ]
 global DEFAULT_MONITOR := [
     {name: "北市十二位外務", items: [
@@ -117,9 +115,9 @@ global DEFAULT_MONITOR := [
 ; 貼上文本：title = 選單上顯示的標題，code = 要貼進輸入框的內容（可多行；用 `n 換行）
 ; 這些只是範例，請改成你自己常用的罐頭文字。內容會「原樣貼上」，不受當下輸入法（中／英）影響。
 global DEFAULT_PASTETEXT := [
-    {title: "1. 罐頭回覆－已派送", code: "您好，您的包裹已於今日完成派送，造成不便敬請見諒。"},
-    {title: "2. 公司地址",        code: "台北市中山區○○路○段○號○樓`nACS 台北站"},
-    {title: "3. 聯絡資訊",        code: "電話：02-0000-0000`n傳真：02-0000-0001"}
+    {title: "另約 6/17 (三)", code: "客戶另約派送日期：6/17 (三)"},
+    {title: "客戶更改收件地址：", code: "客戶更改收件地址："},
+    {title: "北市<每日問題件回報>", code: "<<<每日問題件回報>>>`n日期：6/16`n超過六點後 問題件請自己入問題`n為了避免漏件 請配合!! 謝謝!!`n`n趙克強:`n牟善賢:`n詹益全:`n鄒樂勳:`n吳萌瑜:`n梁志強:`n温正杭:`n蔡俊傑:`n戴勝堂:`n郭香蘭:`n洪森賢:`n學長: `n--------------------請接龍"}
 ]
 ; ==============================================================================
 ; ★【可自行修改區結束】以下為程式邏輯，非必要不用動★
