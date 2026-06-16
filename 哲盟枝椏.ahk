@@ -798,6 +798,14 @@ Action_TPC(Cnumber, *) {
         SendText Cnumber
         Sleep SysSleep
         SendEvent "{Enter 2}"
+	Sleep SysSleep
+        try {
+            btn := UIA.ElementFromHandle(WinActive("A")).FindFirst({Type:"Button", Name:"查詢", ClassName:"TBitBtn"})
+            if btn
+                btn.Invoke()
+        } catch {
+            ; 找不到「查詢」按鈕就略過，不中斷流程
+        }
     } finally {
         EndGuard()
     }
