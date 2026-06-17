@@ -798,7 +798,7 @@ Action_TPC(Cnumber, *) {
         SendText Cnumber
         Sleep SysSleep
         SendEvent "{Enter 2}"
-	Sleep SysSleep
+	Sleep SysSleep * 0.2
         try {
             btn := UIA.ElementFromHandle(WinActive("A")).FindFirst({Type:"Button", Name:"查詢", ClassName:"TBitBtn"})
             if btn
