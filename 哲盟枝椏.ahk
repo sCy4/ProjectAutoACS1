@@ -798,13 +798,18 @@ Action_TPC(Cnumber, *) {
         SendText Cnumber
         Sleep SysSleep
         SendEvent "{Enter 2}"
-	Sleep SysSleep * 0.2
-        try {
-            btn := UIA.ElementFromHandle(WinActive("A")).FindFirst({Type:"Button", Name:"查詢", ClassName:"TBitBtn"})
-            if btn
-                btn.Invoke()
-        } catch {
-            ; 找不到「查詢」按鈕就略過，不中斷流程
+	Sleep 30
+        loop 20 {       ; 最多重試約 1 秒，給「六位外派」這種較慢的查詢足夠時間讓按鈕/元素樹就緒
+            try {
+                btn := UIA.ElementFromHandle(WinActive("A")).FindFirst({Type:"Button", Name:"查詢", ClassName:"TBitBtn"})
+                if btn {
+                    btn.Invoke()
+                    break
+                }
+            } catch {
+                ; 清單重建中時 UIA 可能暫時丟錯，吞掉後繼續重試
+            }
+            Sleep 50
         }
     } finally {
         EndGuard()
