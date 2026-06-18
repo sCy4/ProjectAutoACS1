@@ -237,13 +237,17 @@ _ExportWaybillCore(rider) {
     ; ── 8. 在「不導出字段」窗格中選中「運單號碼」並按 > 箭頭移走 ──
     ; 按下 EXCEL 後會跳出「導出設定」新視窗，這裡用當下作用中視窗抓新視窗
     itemWaybill := ""
+    expHwnd := 0            ; 導出設定視窗的 HWND
     endTime := A_TickCount + 8000
     Loop {
         try {
-            r := UIA.ElementFromHandle(WinActive("A"))
+            curHwnd := WinActive("A")
+            r := UIA.ElementFromHandle(curHwnd)
             pane := r.FindFirst({Type:"Pane", Name:"不導出字段", ClassName:"TGroupBox"})
-            if (pane)
+            if (pane) {
+                expHwnd := curHwnd         ; 記下導出設定視窗，供後續步驟鎖定
                 itemWaybill := pane.FindFirst({Type:"ListItem", Name:"運單號碼"})
+            }
         }
         if (itemWaybill)
             break
@@ -263,7 +267,7 @@ _ExportWaybillCore(rider) {
     Sleep(CFG.delay)
 
     ; ── 9. 導出EXCEL 按鈕 ──
-    btnExport := WaitEl({Type:"Button", Name:"導出EXCEL", ClassName:"TButton"}, 5000)
+    btnExport := WaitEl({Type:"Button", Name:"導出EXCEL", ClassName:"TButton"}, 8000, , expHwnd)
     if (!btnExport)
         Abort("找不到「導出EXCEL」按鈕")
     btnExport.Invoke()
