@@ -31,8 +31,8 @@ SetTitleMatchMode(2)   ; 標題「包含」即視為符合
 
 
 ; ── 指令輸入區（Ctrl+Win+M）介面文字 ──
-global UI_CMD_TITLE  := "指令輸入區"
-global UI_CMD_PROMPT := "請輸入配送員編號，按『執行』或 Enter："
+global UI_CMD_TITLE  := "外務編號輸入區"
+global UI_CMD_PROMPT := "請輸入外務編號："
 global UI_BTN_RUN    := "執行"
 global UI_BTN_CLEAR  := "清空"
 
