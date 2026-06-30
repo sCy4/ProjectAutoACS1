@@ -12,6 +12,15 @@ SetTitleMatchMode(2)   ; 標題「包含」即視為符合
 ;    Ctrl+Win+P  提單圖片：確認未開啟管理視窗 → 跑上傳流程並送出
 ;    Ctrl+Win+C  追蹤查詢：複製目前選取內容 → 跳到 ERP 追蹤查詢並查詢
 ;    Ctrl+Win+S  送出簡訊（每一步動態等待目標就緒）
+;    F8          隨時可按：還原游標後重啟整個腳本（卡住／出錯時的緊急中斷）
+;
+;  ┌─ 日後要改東西，看這裡 ────────────────────────────────────────────────┐
+;  │  ‧ 要改提示框／輸入區「顯示的文字」 → 改下方【顯示文字】區（MSG_／TITLE_／UI_）│
+;  │  ‧ 要改視窗辨識、選單名稱、等待時間、字數上限等「設定值」→ 改【設定區 CFG】 │
+;  │  ‧ 要改流程動作（按鍵順序、點哪個元素）→ 找對應的 Hotkey 函式（見下方熱鍵區）│
+;  │  ‧ 選單項目名稱含 (W)(V) 等快捷字母會隨 ERP 版本變動，程式已用正則自動容錯， │
+;  │    改 CFG 的選單名稱時「只填中文、不要填括號字母」即可（如 "運務系統"）。     │
+;  └──────────────────────────────────────────────────────────────────────────┘
 ; ════════════════════════════════════════════════════════════════════════════
 
 ; ════════════════════════════════════════════════════════════════════════════
@@ -19,6 +28,7 @@ SetTitleMatchMode(2)   ; 標題「包含」即視為符合
 ;   ‧ 含 {1}、{2} 的是「樣板」：程式會用實際內容（視窗名、數量…）替換，請保留 {1}{2}。
 ;   ‧ 其餘為純文字，可自由修改。`n 代表換行。
 ; ════════════════════════════════════════════════════════════════════════════
+
 
 ; ── 指令輸入區（Ctrl+Win+M）介面文字 ──
 global UI_CMD_TITLE  := "指令輸入區"
@@ -64,6 +74,8 @@ global MSG_CLICK_FAIL          := "無法點擊元素（背景點擊全部失敗
 
 ; ── 導出流程各步驟的中止訊息 ──
 global MSG_ABORT_NO_SIGN_WINDOW := "等不到「簽收監控」子視窗開啟（請確認快遞服務系統正常）。"
+global MSG_ABORT_NO_MENU_TOP    := "找不到選單列「{1}」項目（選單文字可能與預期不同）。"   ; {1}=menuTop
+global MSG_ABORT_NO_MENU_SIGN   := "展開「{1}」選單後，找不到「{2}」項目（選單文字可能與預期不同）。"   ; {1}=menuTop {2}=menuSign
 global MSG_ABORT_NO_QUERY_BTN   := "找不到「查詢」按鈕。"
 global MSG_ABORT_QUERY_TIMEOUT  := "等不到查詢完成（標題未變化）。"
 global MSG_ABORT_NO_EXCEL_BTN   := "找不到「EXCEL」按鈕。"
@@ -91,6 +103,18 @@ global CFG := {
     saveWin:       "另存",                  ; 另存新檔對話框標題
     queryTimeout:  60000,                   ; 等查詢完成的上限（毫秒）
 
+    ; ── 開「簽收監控」用的選單名稱（不同電腦/版本的快捷鍵字母 (W)(V)... 會變，比對時忽略括號內字母）──
+    menuTop:         "運務系統",            ; 主選單列項目（MenuBar 底下）
+    menuSign:        "簽收監控",            ; 主選單展開後的子項目
+    menuOpenTimeout: 3000,                  ; 等主選單項目／下拉選單／子項目依序出現，每一步的上限（毫秒）
+
+    ; ── 開「提單圖片管理」用的選單名稱（^#p；同樣忽略括號內快捷鍵字母）──
+    ; 流程：Alt+X 展開「提單系統」彈出選單 → 點「提單圖片」展開其子選單 → 點「提單圖片管理」開窗。
+    ; 多層彈出選單會有多個 #32768 並存，故各層彈出選單也記其 Name 以便鎖定正確的那一個。
+    picTopMenu:      "提單系統",            ; Alt+X 後第一層彈出選單的 Name（其下含「提單圖片」）
+    picSubItem:      "提單圖片",            ; 第一層裡要展開的項目（展開後出現第二層彈出選單）
+    picMgrItem:      "提單圖片管理",        ; 第二層裡要點擊開窗的項目
+
     ; ── 共用時序 ──
     delay:         100,                     ; 導出流程每個動作的間隔（毫秒）
     pollGap:       30,                      ; UIA 輪詢間隔（毫秒）
@@ -102,9 +126,15 @@ global CFG := {
     clipMaxLen:    20                       ; 沒選取文字時，剪貼簿英數字超過此字數就拒絕（防呆）
 }
 
-global g_Busy := false   ; 導出防重入旗標：執行中為 true
+; ── 防重入旗標 ──
+;   刻意用兩個旗標而非一個，因為兩類流程的進入點不同：
+;     ‧ g_Busy    ：導出單號（^#m → DoExportWaybill，由 GUI 按鈕觸發，不經 RunExclusive）專用。
+;     ‧ g_Running ：^#p／^#c／^#s（都經 RunExclusive）共用。
+;   兩邊進入前都會「同時檢查對方」（g_Busy || g_Running），藉此達成「導出單號」與
+;   「其餘三個流程」之間也互斥——同一時間全腳本只會有一個自動化流程在跑。
+global g_Busy     := false   ; 導出單號流程執行中為 true
+global g_Running  := false   ; ^#p／^#c／^#s 任一流程執行中為 true
 global g_guarding := false   ; 滑鼠鎖旗標：自動化執行中為 true（供下方 #HotIf 與保護函式使用）
-global g_Running := false   ; ^#p／^#c／^#s 共用防重入旗標：任一流程執行中為 true
 
 ; 指令輸入區 GUI 物件（延後到第一次叫出時才建立）
 cmdGui  := ""
@@ -142,20 +172,20 @@ HotkeyUploadPic() {
     if (!GoToErpMain())
         return
 
-    if (FindErpChild("Tyd_jobno_jobnopicdownform")) {
-        MsgBox(MSG_PIC_MGR_OPEN, TITLE_PIC_OPEN, 0x30)
-        return
-    }
-
-    BeginGuard()   ; ← 自動化開始：鎖實體滑鼠＋游標轉圈（F8 可緊急解鎖）
+    ; 先轉圈再檢查：讓使用者一按下就看到游標轉圈，知道腳本已在運作
+    ; （檢查「提單圖片管理是否已開」是 UIA 整樹掃描，較慢，不先轉圈會讓人誤以為沒反應）。
+    BeginGuard()   ; ← 自動化開始：鎖實體滑鼠＋游標轉圈（F8 可隨時重啟腳本中斷）
     try {
-        ; 前置選單動作：Alt+X → O → Y
-        SendEvent("!x")
-        Sleep(CFG.sysSleep)
-        SendEvent("o")
-        Sleep(CFG.sysSleep)
-        SendEvent("y")
-        Sleep(CFG.sysSleep)
+        ; 「提單圖片管理」已開著 → 先解鎖（提示框需可用滑鼠關閉）後提示並停止
+        if (FindErpChild("Tyd_jobno_jobnopicdownform")) {
+            EndGuard()
+            MsgBox(MSG_PIC_MGR_OPEN, TITLE_PIC_OPEN, 0x30)
+            return
+        }
+
+        ; 前置選單動作：Alt+X 展開「提單系統」→ 點「提單圖片」展開子選單 → 點「提單圖片管理」開窗。
+        ; 第一層用鍵盤 Alt+X（沿用既有作法）；第二、三層改用 UIA 點擊，名稱忽略括號內快捷鍵字母。
+        OpenPicMgrMenu()
 
         ; 點「上傳」按鈕
         if (!ClickUploadButton()) {
@@ -167,9 +197,48 @@ HotkeyUploadPic() {
 
         ; 既定按鍵序列
         SendEvent("{Down}{Tab}{Down}{Tab 2}{Enter}{Down 2}{Enter}{F2}y")
+    } catch as err {
+        EndGuard()   ; 先解鎖，錯誤框才能用滑鼠關閉
+        MsgBox(MSG_EXPORT_ABORT_PREFIX err.Message, TITLE_ERROR, 0x10)
     } finally {
         EndGuard()   ; 正常結束也解鎖（idempotent，已解鎖則無動作）
     }
+}
+
+; 開「提單圖片管理」子視窗的選單流程（^#p 用）：
+;   ① Alt+X 展開第一層「提單系統」彈出選單（鍵盤，沿用既有作法）。
+;   ② 在「提單系統」彈出選單裡找「提單圖片」並展開——它是展開子選單（非執行），
+;      故用 ExpandTopMenu（優先 ExpandCollapse，退回 Invoke）。
+;   ③ 在「提單圖片」彈出選單裡找「提單圖片管理」並點擊開窗。
+; 兩層項目的快捷鍵字母（如「提單圖片(O)」「提單圖片管理(Y)」）會隨版本變動，故皆用正則容錯。
+; 多層彈出選單會有多個 #32768 並存，故第二、三層都用 popupNamePattern 鎖定正確的那一個。
+; 任一步驟逾時找不到就 Abort，並先按 Escape 收掉殘留的選單展開狀態。
+OpenPicMgrMenu() {
+    topPopupPat := MenuNamePattern(CFG.picTopMenu)   ; 第一層彈出選單 Name：提單系統(?)
+    subItemPat  := MenuNamePattern(CFG.picSubItem)   ; 要展開的項目：提單圖片(?)
+    subPopupPat := MenuNamePattern(CFG.picSubItem)   ; 展開後第二層彈出選單 Name：提單圖片(?)
+    mgrItemPat  := MenuNamePattern(CFG.picMgrItem)   ; 要點擊的項目：提單圖片管理(?)
+
+    ; ① Alt+X 展開「提單系統」彈出選單
+    SendEvent("!x")
+    Sleep(CFG.sysSleep)
+
+    ; ② 在「提單系統」彈出選單裡找「提單圖片」並展開
+    itemSub := WaitMenuItem(subItemPat, CFG.menuOpenTimeout, topPopupPat)
+    if (!itemSub) {
+        Send("{Escape 2}")
+        Abort(Format(MSG_ABORT_NO_MENU_SIGN, CFG.picTopMenu, CFG.picSubItem))
+    }
+    ExpandTopMenu(itemSub)
+    Sleep(CFG.delay)
+
+    ; ③ 在「提單圖片」彈出選單裡找「提單圖片管理」並點擊開窗
+    itemMgr := WaitMenuItem(mgrItemPat, CFG.menuOpenTimeout, subPopupPat)
+    if (!itemMgr) {
+        Send("{Escape 3}")   ; 已展開到第三層，多按幾次收乾淨
+        Abort(Format(MSG_ABORT_NO_MENU_SIGN, CFG.picSubItem, CFG.picMgrItem))
+    }
+    ClickEl(itemMgr)
 }
 
 ; Ctrl+Win+C：取得查詢字串（選取優先，沒選取則用剪貼簿英數內容）→ 跳到 ERP「追蹤查詢」貼上並查詢
@@ -198,7 +267,7 @@ HotkeyTrackQuery() {
         return
 
     ; 4~6. 跳窗→聚焦→貼上查詢：這段才上鎖（避免貼上途中誤觸跳焦）
-    BeginGuard()   ; ← 自動化開始：鎖實體滑鼠＋游標轉圈（F8 可緊急解鎖）
+    BeginGuard()   ; ← 自動化開始：鎖實體滑鼠＋游標轉圈（F8 可隨時重啟腳本中斷）
     try {
         ; 4. 等「追蹤查詢」子視窗就緒（最多 3 秒）
         child := ""
@@ -291,7 +360,7 @@ HotkeySendSms() {
         return
     }
 
-    BeginGuard()   ; ← 自動化開始：鎖實體滑鼠＋游標轉圈（F8 可緊急解鎖）
+    BeginGuard()   ; ← 自動化開始：鎖實體滑鼠＋游標轉圈（F8 可隨時重啟腳本中斷）
     try {
         ; ① 第一個「下一步」
         ClickEl(WaitFor({Type:"Group", AutomationId:"nextStep"}, "第1步 下一步", T))
@@ -318,7 +387,7 @@ HotkeySendSms() {
         ; ⑥ 原生對話框「確定」：Chrome 原生對話框對 UIA 點擊無效，改用鍵盤（確定為預設鍵）
         WaitFor({Type:"Button", Name:"確定", MatchMode:"Substring"}, "第6步 等對話框跳出", T)
         Send("{Enter}")
-        Sleep(CFG.sysSleep * 1.2)
+        Sleep(CFG.sysSleep * 2.4)
 
         ; ⑦ 收單成功框「確定」：先等「簡訊中心收單成功！」，再點
         WaitFor({Type:"Text", Name:"簡訊中心收單成功！", MatchMode:"Substring"}, "錨點 收單成功", T, false)
@@ -333,10 +402,11 @@ HotkeySendSms() {
 }
 
 ; ════════════════════════════════════════════════════════════════════════════
-;  保護期間熱鍵：鎖定中吞掉所有實體滑鼠鍵；F8 緊急解鎖
+;  保護期間熱鍵：鎖定中吞掉所有實體滑鼠鍵
 ;    只在 g_guarding 為真時生效；平時這些鍵照常運作。
 ;    （沿用哲盟枝椏／ClearFlow 做法：不靠 BlockInput，免系統管理員權限。
 ;     腳本自身的點擊都走 UIA 程式化 Invoke／ControlClick，不會被這些熱鍵吞掉。）
+;    F8（重啟腳本）不放這裡——它需要「隨時可按」，故另設為下方的全域熱鍵。
 ; ════════════════════════════════════════════════════════════════════════════
 #HotIf g_guarding
 *LButton::return
@@ -346,8 +416,12 @@ HotkeySendSms() {
 *WheelDown::return
 *XButton1::return
 *XButton2::return
-*F8::EndGuard()      ; 保護期間若卡住，按 F8 立即解除鎖定
 #HotIf
+
+; F8：隨時可按，還原游標後重啟整個腳本。
+;   出錯／卡住時（不論是否在鎖定中、流程卡在哪一步），按 F8 一律能強制回到乾淨狀態，
+;   不必判斷當前狀態。重啟前先還原系統游標，避免 SetSystemCursor 改過的轉圈游標殘留。
+*F8::RestartScript()
 
 ; ════════════════════════════════════════════════════════════════════════════
 ;  共用防重入：同一時間只允許一個自動化流程（^#p／^#c／^#s 與導出單號互斥）
@@ -440,23 +514,26 @@ ExportWaybillCore(rider) {
     if (!(opHwnd := GoToErpMain()))
         return   ; GoToErpMain 已用 Alert 提示原因
 
-    ; 2.「簽收監控」若已開著 → 提示使用者自行關閉後停止
-    signForm := ""
-    try signForm := UIA.ElementFromHandle(opHwnd).FindFirst({ClassName: CFG.signClass})
-    if (signForm) {
+    ; 先轉圈再檢查：讓使用者一按下就看到游標轉圈，知道腳本已在運作
+    ; （檢查「簽收監控是否已開」是 UIA 整樹掃描，較慢，不先轉圈會讓人誤以為沒反應）。
+    ; 解鎖統一由外層 DoExportWaybill 的 try/finally 處理：不論正常結束或 Abort 丟例外都會 EndGuard。
+    BeginGuard()
+
+    ; 2.「簽收監控」若已開著 → 提示使用者自行關閉後停止。
+    ;    必須用 UIA 偵測：簽收監控子表單是 MDI 子視窗（非頂層視窗），WinExist 抓不到它
+    ;    （實測開著時 WinExist 回 0），只有 UIA 找得到。此檢查在 ERP 被其他視窗蓋住、
+    ;    UIA 樹尚未就緒時較慢（約 1~1.7 秒），但正確性優先——若漏判成「沒開」會重複開窗，
+    ;    導致子視窗焦點不在預設日期欄、後續 Tab 跳欄全部錯亂。
+    if (SignMonitorIsOpen(opHwnd)) {
+        EndGuard()   ; 先解鎖，提示框才能用滑鼠關閉
         MsgBox(MSG_MONITOR_OPEN, TITLE_MONITOR, 0x30)
         return
     }
 
-    ; 自動化開始：鎖實體滑鼠＋游標轉圈（F8 可緊急解鎖）。
-    ; 解鎖統一由外層 DoExportWaybill 的 try/finally 處理：不論正常結束或 Abort 丟例外都會 EndGuard。
-    BeginGuard()
-
-    ; 3. 打開「簽收監控」子視窗：Alt+W 下拉 → W
-    Send("!w")
-    Sleep(CFG.delay)
-    Send("w")
-    Sleep(CFG.delay)
+    ; 3. 打開「簽收監控」子視窗：點「運務系統」選單列項目 → 點下拉選單中的「簽收監控」
+    ;    （不靠 Alt+W／W 之類的鍵盤按鍵：不同電腦／ERP 版本上，括號內的快捷鍵字母可能不同，
+    ;     例如「運務系統(W)」在別的電腦可能是「運務系統(V)」，故用 RegEx 比對名稱、忽略括號內字母。）
+    OpenSignMonitorMenu(opHwnd)
 
     ; 3b. 防呆：等子視窗（ClassName=Ts_ok_manageForm）真的出現，再往下輸入，避免盲打到錯視窗
     if (!WaitEl({Type:"Window", ClassName: CFG.signClass}, CFG.subWinOpen, , opHwnd))
@@ -608,13 +685,17 @@ GoToErpMain() {
     return hMain
 }
 
-; 反覆啟用視窗，直到「它本身」確實在前景（用 handle 確認，不靠標題，擺脫同名冒充）
+; 反覆啟用視窗，直到「它本身」確實在前景（用 handle 確認，不靠標題，擺脫同名冒充）。
+; 改為短間隔輪詢：視窗常在數十毫秒內就切到前景，故每 20ms 檢查一次、一就緒立即返回，
+; 不再每輪固定睡滿 120ms（那會白白多等）。WinActivate 不必每輪重發（過於頻繁反而干擾），
+; 每 5 輪（約 100ms）重發一次即可。總上限約 2 秒（100 輪 × 20ms）。
 ActivateMain(winId) {
-    Loop 20 {
-        WinActivate(winId)
-        Sleep(120)
+    Loop 100 {
+        if (Mod(A_Index - 1, 5) = 0)         ; 第 1、6、11… 輪重發一次啟用
+            WinActivate(winId)
         if (WinActive(winId))
             return true
+        Sleep(20)
     }
     return false
 }
@@ -623,6 +704,150 @@ ActivateMain(winId) {
 FindErpChild(className) {
     try return UIA.ElementFromHandle(WinActive("A")).FindElement({Type:"Window", ClassName:className})
     return ""
+}
+
+; 把選單顯示文字（如「運務系統」）轉成可容忍「括號內快捷鍵字母不同」的比對用正則。
+;   「運務系統」→ 比對「運務系統」或「運務系統(任一字母)」（半形／全形括號都接受），
+;   這樣不管該電腦的 ERP 版本把快捷鍵設成 (W)(V) 或其他字母，名稱都能對得上。
+MenuNamePattern(baseName) {
+    escaped := RegExReplace(baseName, "([.\\+*?\[^\]$(){}=!<>|:#-])", "\$1")
+    return "^" escaped "([(（][A-Za-z][)）])?\s*$"
+}
+
+; 偵測「簽收監控」子視窗是否已開著。回 true／false。
+; 簽收監控是 MDI 子視窗（非頂層），只能用 UIA 偵測（WinExist 抓不到）。
+; 用整樹 FindFirst 比對 ClassName——實測此寫法在「已開著」時比加 Type:Window 的寫法更快，
+; 而「沒開」時兩者相當；由於已開著時會走到提示、不影響自動化耗時，故採此寫法。
+SignMonitorIsOpen(opHwnd) {
+    sign := ""
+    try sign := UIA.ElementFromHandle(opHwnd).FindFirst({ClassName: CFG.signClass})
+    return sign ? true : false
+}
+
+; 打開「簽收監控」子視窗：兩層都用 UIA 元素定位（名稱忽略括號內快捷鍵字母），不依賴鍵盤快捷鍵。
+;   ① 第一層「運務系統」是收合狀態的選單列頂層項目。實測這台電腦上，這些頂層項目在 UIA 樹
+;      上**並不是掛在 MenuBar 元素底下**（從 MenuBar 往下只找得到「文件視窗」一項），而是直接
+;      掛在主視窗下。故改為：從主視窗一次抓出所有 MenuItem，再用 RegExMatch 比對名稱找到
+;      「運務系統」，然後用 ExpandTopMenu 展開它（優先 ExpandCollapse 模式，退回 Invoke）。
+;      ——這也是先前各版第一層失敗的真正原因：舊寫法限定「先找 MenuBar、再從其下找」，
+;        但目標項目根本不在 MenuBar 子樹裡，故永遠找不到。
+;   ② 第二層「簽收監控」在展開後的彈出選單（ClassName "#32768"，獨立頂層視窗）裡。用 WinExist
+;      取得其 HWND 後抓出所有 MenuItem，再 RegExMatch 比對名稱找到並點擊。
+;      兩層的快捷鍵字母（如「運務系統(W)」「簽收監控(W)/(T)/…」）都會隨版本變動，故皆用正則容錯。
+; 任一層逾時找不到就 Abort，並先按 Escape 收掉殘留的選單展開／反白狀態。
+OpenSignMonitorMenu(opHwnd) {
+    topPattern  := MenuNamePattern(CFG.menuTop)
+    signPattern := MenuNamePattern(CFG.menuSign)
+
+    ; ① 在主視窗下找「運務系統」頂層項目並展開
+    itemTop := WaitTopMenuItem(opHwnd, topPattern, CFG.menuOpenTimeout)
+    if (!itemTop) {
+        Send("{Escape}")
+        Abort(Format(MSG_ABORT_NO_MENU_TOP, CFG.menuTop))
+    }
+    ExpandTopMenu(itemTop)
+    Sleep(CFG.delay)
+
+    ; ② 在展開出的彈出選單（#32768）裡找「簽收監控」並點擊
+    itemSign := WaitMenuItem(signPattern, CFG.menuOpenTimeout)
+    if (!itemSign) {
+        Send("{Escape 2}")   ; 收掉已展開的子選單與選單列反白，避免中止後卡在選單模式
+        Abort(Format(MSG_ABORT_NO_MENU_SIGN, CFG.menuTop, CFG.menuSign))
+    }
+    ClickEl(itemSign)
+}
+
+; 在主視窗（opHwnd）下輪詢尋找「名稱符合 namePattern（正則）」的頂層 MenuItem：
+; 每輪抓出主視窗下所有 MenuItem，用 AHK 的 RegExMatch 逐一比對名稱。找到回元素；逾時回 ""。
+WaitTopMenuItem(opHwnd, namePattern, timeoutMS, gap := "") {
+    if (gap = "")
+        gap := CFG.pollGap
+    endTime := A_TickCount + timeoutMS
+    Loop {
+        try {
+            items := UIA.ElementFromHandle(opHwnd).FindElements({Type:"MenuItem"})
+            if (items) {
+                for it in items {
+                    nm := ""
+                    try nm := it.Name
+                    if (nm != "" && RegExMatch(nm, namePattern))
+                        return it
+                }
+            }
+        }
+        if (A_TickCount > endTime)
+            return ""
+        Sleep(gap)
+    }
+}
+
+; 展開選單列頂層項目，使其下拉選單彈出。優先用 ExpandCollapse 模式的 Expand()
+; （語義最正確），不支援時退回 ClickEl（Invoke／DoDefaultAction，對多數選單也會展開）。
+ExpandTopMenu(item) {
+    try {
+        item.ExpandCollapsePattern.Expand()
+        return
+    }
+    ClickEl(item)
+}
+
+; 取得彈出選單（pop-up menu，ClassName="#32768"）的 UIA 根元素。
+; namePattern 為空 → 回傳找到的第一個 #32768（單層選單用，如簽收監控）。
+; namePattern 有值 → 在所有並存的 #32768 中，回傳「UIA Name 符合該正則」的那一個
+;   （多層選單可能有多個 #32768，需靠 Name 區分，例如「提單系統(X)」「提單圖片(O)」）。
+; 注意：原生選單視窗的 Win32 標題（WinGetTitle）是空的，選單名稱只存在於 UIA 的 Name 屬性，
+;   故必須先 ElementFromHandle 再讀 .Name 來比對，不能用 WinGetTitle。
+; 找不到符合者回 ""（交給呼叫端進入下一輪重試）。
+PopupMenuRoot(namePattern := "") {
+    prev := A_DetectHiddenWindows
+    DetectHiddenWindows(false)              ; 彈出選單為可見視窗，限定只找可見者，避免抓到殘影
+    hwnds := WinGetList("ahk_class #32768")
+    DetectHiddenWindows(prev)
+    if (!hwnds.Length)
+        return ""
+    if (namePattern = "") {
+        try return UIA.ElementFromHandle(hwnds[1])
+        return ""
+    }
+    ; 有指定 Name：逐一讀每個彈出選單的 UIA Name 來比對，回傳符合者
+    for h in hwnds {
+        try {
+            el := UIA.ElementFromHandle(h)
+            nm := ""
+            try nm := el.Name
+            if (nm != "" && RegExMatch(nm, namePattern))
+                return el
+        }
+    }
+    return ""
+}
+
+; 在彈出選單裡輪詢尋找「名稱符合 namePattern（正則）」的 MenuItem：
+; 每輪重新取得彈出選單根節點、抓出其下所有 MenuItem，再用 AHK 的 RegExMatch 逐一比對名稱。
+; popupNamePattern：限定要在「哪個 Name 的彈出選單」裡找（多層選單用）；空字串＝第一個 #32768。
+; 找到回該 MenuItem；逾時回 ""。
+WaitMenuItem(namePattern, timeoutMS, popupNamePattern := "", gap := "") {
+    if (gap = "")
+        gap := CFG.pollGap
+    endTime := A_TickCount + timeoutMS
+    Loop {
+        root := PopupMenuRoot(popupNamePattern)
+        if (root) {
+            items := ""
+            try items := root.FindElements({Type:"MenuItem"})
+            if (items) {
+                for it in items {
+                    nm := ""
+                    try nm := it.Name
+                    if (nm != "" && RegExMatch(nm, namePattern))
+                        return it
+                }
+            }
+        }
+        if (A_TickCount > endTime)
+            return ""
+        Sleep(gap)
+    }
 }
 
 ; 點 ERP 的「上傳」按鈕（TBitBtn 的 UIA Invoke 偶爾失敗，重試 3 次）
@@ -757,6 +982,18 @@ EndGuard() {
         return
     g_guarding := false             ; 關閉滑鼠吞鍵熱鍵
     StopCursorLock()
+}
+
+; F8 用：還原游標後重啟整個腳本。隨時可按（不論是否在鎖定中）。
+; 順序很重要：先停游標保活計時器、再還原系統游標，最後才 Reload——
+; 否則計時器可能在 Reload 前一刻又把游標改回轉圈，或 SetSystemCursor 改過的
+; 全域游標在重啟後殘留，導致使用者卡在轉圈游標。
+RestartScript() {
+    global g_guarding
+    g_guarding := false             ; 先解除狀態，停用滑鼠吞鍵熱鍵
+    SetTimer(CursorLockKeepAlive, 0)   ; 停掉游標保活計時器
+    RestoreCursor()                 ; 還原系統預設游標（消除轉圈）
+    Reload()                        ; 重啟腳本，強制終止任何卡住的流程
 }
 
 ; 把系統游標換成「忙碌(等待)」轉圈（只替換最常見的三種）
