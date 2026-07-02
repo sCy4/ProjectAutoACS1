@@ -12,7 +12,7 @@ SetTitleMatchMode(2)   ; 標題「包含」即視為符合
 ;    Ctrl+Win+P  提單圖片：確認未開啟管理視窗 → 跑上傳流程並送出
 ;    Ctrl+Win+C  追蹤查詢：複製目前選取內容 → 跳到 ERP 追蹤查詢並查詢
 ;    Ctrl+Win+S  送出簡訊（每一步動態等待目標就緒）
-;    F8          隨時可按：還原游標後重啟整個腳本（卡住／出錯時的緊急中斷）
+;    F10         隨時可按：還原游標後重啟整個腳本（卡住／出錯時的緊急中斷）
 ;
 ;  ┌─ 日後要改東西，看這裡 ────────────────────────────────────────────────┐
 ;  │  ‧ 要改提示框／輸入區「顯示的文字」 → 改下方【顯示文字】區（MSG_／TITLE_／UI_）│
@@ -174,7 +174,7 @@ HotkeyUploadPic() {
 
     ; 先轉圈再檢查：讓使用者一按下就看到游標轉圈，知道腳本已在運作
     ; （檢查「提單圖片管理是否已開」是 UIA 整樹掃描，較慢，不先轉圈會讓人誤以為沒反應）。
-    BeginGuard()   ; ← 自動化開始：鎖實體滑鼠＋游標轉圈（F8 可隨時重啟腳本中斷）
+    BeginGuard()   ; ← 自動化開始：鎖實體滑鼠＋游標轉圈（F10 可隨時重啟腳本中斷）
     try {
         ; 「提單圖片管理」已開著 → 先解鎖（提示框需可用滑鼠關閉）後提示並停止
         if (FindErpChild("Tyd_jobno_jobnopicdownform")) {
@@ -267,7 +267,7 @@ HotkeyTrackQuery() {
         return
 
     ; 4~6. 跳窗→聚焦→貼上查詢：這段才上鎖（避免貼上途中誤觸跳焦）
-    BeginGuard()   ; ← 自動化開始：鎖實體滑鼠＋游標轉圈（F8 可隨時重啟腳本中斷）
+    BeginGuard()   ; ← 自動化開始：鎖實體滑鼠＋游標轉圈（F10 可隨時重啟腳本中斷）
     try {
         ; 4. 等「追蹤查詢」子視窗就緒（最多 3 秒）
         child := ""
@@ -360,7 +360,7 @@ HotkeySendSms() {
         return
     }
 
-    BeginGuard()   ; ← 自動化開始：鎖實體滑鼠＋游標轉圈（F8 可隨時重啟腳本中斷）
+    BeginGuard()   ; ← 自動化開始：鎖實體滑鼠＋游標轉圈（F10 可隨時重啟腳本中斷）
     try {
         ; ① 第一個「下一步」
         ClickEl(WaitFor({Type:"Group", AutomationId:"nextStep"}, "第1步 下一步", T))
@@ -387,11 +387,12 @@ HotkeySendSms() {
         ; ⑥ 原生對話框「確定」：Chrome 原生對話框對 UIA 點擊無效，改用鍵盤（確定為預設鍵）
         WaitFor({Type:"Button", Name:"確定", MatchMode:"Substring"}, "第6步 等對話框跳出", T)
         Send("{Enter}")
-        Sleep(CFG.sysSleep * 2.4)
+        Sleep(CFG.sysSleep * 3)
 
         ; ⑦ 收單成功框「確定」：先等「簡訊中心收單成功！」，再點
         WaitFor({Type:"Text", Name:"簡訊中心收單成功！", MatchMode:"Substring"}, "錨點 收單成功", T, false)
-        ClickEl(WaitFor({Type:"Text", Name:"確定", MatchMode:"Substring"}, "第7步 收單確定", T))
+        Sleep(CFG.sysSleep * 3)
+	ClickEl(WaitFor({Type:"Text", Name:"確定", MatchMode:"Substring"}, "第7步 收單確定", T))
 
     } catch as err {
         EndGuard()   ; 先解鎖，錯誤框才能用滑鼠關閉
@@ -406,7 +407,7 @@ HotkeySendSms() {
 ;    只在 g_guarding 為真時生效；平時這些鍵照常運作。
 ;    （沿用哲盟枝椏／ClearFlow 做法：不靠 BlockInput，免系統管理員權限。
 ;     腳本自身的點擊都走 UIA 程式化 Invoke／ControlClick，不會被這些熱鍵吞掉。）
-;    F8（重啟腳本）不放這裡——它需要「隨時可按」，故另設為下方的全域熱鍵。
+;    F10（重啟腳本）不放這裡——它需要「隨時可按」，故另設為下方的全域熱鍵。
 ; ════════════════════════════════════════════════════════════════════════════
 #HotIf g_guarding
 *LButton::return
@@ -418,10 +419,10 @@ HotkeySendSms() {
 *XButton2::return
 #HotIf
 
-; F8：隨時可按，還原游標後重啟整個腳本。
-;   出錯／卡住時（不論是否在鎖定中、流程卡在哪一步），按 F8 一律能強制回到乾淨狀態，
+; F10：隨時可按，還原游標後重啟整個腳本。
+;   出錯／卡住時（不論是否在鎖定中、流程卡在哪一步），按 F10 一律能強制回到乾淨狀態，
 ;   不必判斷當前狀態。重啟前先還原系統游標，避免 SetSystemCursor 改過的轉圈游標殘留。
-*F8::RestartScript()
+*F10::RestartScript()
 
 ; ════════════════════════════════════════════════════════════════════════════
 ;  共用防重入：同一時間只允許一個自動化流程（^#p／^#c／^#s 與導出單號互斥）
@@ -984,7 +985,7 @@ EndGuard() {
     StopCursorLock()
 }
 
-; F8 用：還原游標後重啟整個腳本。隨時可按（不論是否在鎖定中）。
+; F10 用：還原游標後重啟整個腳本。隨時可按（不論是否在鎖定中）。
 ; 順序很重要：先停游標保活計時器、再還原系統游標，最後才 Reload——
 ; 否則計時器可能在 Reload 前一刻又把游標改回轉圈，或 SetSystemCursor 改過的
 ; 全域游標在重啟後殘留，導致使用者卡在轉圈游標。
