@@ -1,4 +1,5 @@
 ﻿#Requires AutoHotkey v2.0
+;@Ahk2Exe-UpdateManifest 1
 #Include UIA.ahk
 
 ; ==============================================================================
@@ -493,12 +494,16 @@ ShowSettings(*) {
     ; --- 分頁3：簽收監控人員捷徑 ---
     g_tab.UseTab(3)
     AddHint(g_settingsGui, 32, 50, 536, HINT_MONITOR)
-    ; +0x100 = LBS_NOINTEGRALHEIGHT：強制清單高度等於 h106，下緣才會和右側三顆按鈕齊平（同組元素）
-    g_groupListBox := g_settingsGui.Add("ListBox", "x32 y76 w384 h106 +0x100 BackgroundWhite", [])
+    ; 群組清單 w340，右側接三顆「新增/命名/刪除」，最右邊一欄放 ▲▼ 讓「群組本身」也能調整排列順序
+    ; +0x100 = LBS_NOINTEGRALHEIGHT：強制清單高度等於 h106，下緣才會和右側按鈕齊平（同組元素）
+    g_groupListBox := g_settingsGui.Add("ListBox", "x32 y76 w340 h106 +0x100 BackgroundWhite", [])
     g_groupListBox.OnEvent("Change", (*) => Monitor_OnGroupSelect())
-    MakeButton(g_settingsGui, 428, 76, 140, 30, BTN_GRP_ADD).OnEvent("Click", (*) => Monitor_AddGroup())
-    MakeButton(g_settingsGui, 428, 114, 140, 30, BTN_GRP_RENAME).OnEvent("Click", (*) => Monitor_RenameGroup())
-    MakeButton(g_settingsGui, 428, 152, 140, 30, BTN_GRP_DELETE, "danger").OnEvent("Click", (*) => Monitor_DeleteGroup())
+    MakeButton(g_settingsGui, 380, 76, 140, 30, BTN_GRP_ADD).OnEvent("Click", (*) => Monitor_AddGroup())
+    MakeButton(g_settingsGui, 380, 114, 140, 30, BTN_GRP_RENAME).OnEvent("Click", (*) => Monitor_RenameGroup())
+    MakeButton(g_settingsGui, 380, 152, 140, 30, BTN_GRP_DELETE, "danger").OnEvent("Click", (*) => Monitor_DeleteGroup())
+    ; 群組排序 ▲▼：放在三顆按鈕右側，上下兩顆各 h50、中間留 6px，下緣對齊清單（y76→y182）
+    MakeButton(g_settingsGui, 528, 76, 40, 50, BTN_UP).OnEvent("Click", (*) => Monitor_MoveGroup(-1))
+    MakeButton(g_settingsGui, 528, 132, 40, 50, BTN_DOWN).OnEvent("Click", (*) => Monitor_MoveGroup(1))
     g_monitorEditor := ListEditor(g_settingsGui, 32, 198, 536, 142, LBL_COL_MONITOR)
     Monitor_RefreshGroups(1)
 
@@ -650,12 +655,34 @@ Monitor_DeleteGroup() {
     Monitor_RefreshGroups(idx)
 }
 
+Monitor_MoveGroup(dir) {
+    global g_work, g_groupListBox
+    idx := g_groupListBox.Value
+    if (idx < 1)
+        return
+    target := idx + dir
+    if (target < 1 || target > g_work.monitor.Length)
+        return
+    ; 整個群組物件（含 name 與 items）一起交換，故群組內項目與未提交的編輯都不會遺失
+    tmp := g_work.monitor[idx]
+    g_work.monitor[idx] := g_work.monitor[target]
+    g_work.monitor[target] := tmp
+    Monitor_RefreshGroups(target)   ; 重畫並選回移動後的位置，下方項目清單也會跟著切到同一群組
+}
+
 ; ==============================================================================
 ; 【系統列(托盤)選單】
 ; ==============================================================================
 SetupTray() {
     A_TrayMenu.Insert("1&", TRAY_SETTINGS, (*) => ShowSettings())
     A_TrayMenu.Insert("2&")     ; 分隔線
+    OnMessage(0x404, Tray_OnIconClick)   ; 0x404 = AHK 系統列圖示的通知訊息；讓左鍵單擊也能開啟編輯區
+}
+
+; 系統列圖示滑鼠事件：左鍵放開時開啟編輯區（右鍵選單、雙擊維持 AHK 預設，不受影響）
+Tray_OnIconClick(wParam, lParam, msg, hwnd) {
+    if (lParam = 0x202)   ; WM_LBUTTONUP
+        ShowSettings()
 }
 
 ; ==============================================================================

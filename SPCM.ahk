@@ -1,4 +1,5 @@
 ﻿#Requires AutoHotkey v2.0
+;@Ahk2Exe-UpdateManifest 1
 #SingleInstance Force
 #Include UIA.ahk
 
@@ -31,7 +32,7 @@ SetTitleMatchMode(2)   ; 標題「包含」即視為符合
 
 
 ; ── 指令輸入區（Ctrl+Win+M）介面文字 ──
-global UI_CMD_TITLE  := "外務編號輸入區"
+global UI_CMD_TITLE  := "導出單號"
 global UI_CMD_PROMPT := "請輸入外務編號："
 global UI_BTN_RUN    := "執行"
 global UI_BTN_CLEAR  := "清空"
