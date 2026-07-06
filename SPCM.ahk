@@ -122,6 +122,8 @@ global CFG := {
     sysDelay:      30,                      ; Ctrl+Win+P／C 的 SetKeyDelay（毫秒）
     sysSleep:      40,                      ; Ctrl+Win+P／S 流程內的短暫等待（毫秒）
     stepTimeout:   5000,                    ; 送簡訊每一步的最長等待（毫秒，^#s 用）
+    smsConfirmDelay: 300,                   ; ^#s 最後「收單成功」框：偵測到「確定」後，點擊前再多等這段時間（毫秒）
+                                            ;   —— 若最後一步偶爾沒點到「確定」，把這個值調大（如 500、800）即可。
 
     ; ── Ctrl+Win+C 行為 ──
     clipMaxLen:    20                       ; 沒選取文字時，剪貼簿英數字超過此字數就拒絕（防呆）
@@ -388,12 +390,13 @@ HotkeySendSms() {
         ; ⑥ 原生對話框「確定」：Chrome 原生對話框對 UIA 點擊無效，改用鍵盤（確定為預設鍵）
         WaitFor({Type:"Button", Name:"確定", MatchMode:"Substring"}, "第6步 等對話框跳出", T)
         Send("{Enter}")
-        Sleep(CFG.sysSleep * 3)
+        Sleep(CFG.sysSleep * 2.4)
 
         ; ⑦ 收單成功框「確定」：先等「簡訊中心收單成功！」，再點
         WaitFor({Type:"Text", Name:"簡訊中心收單成功！", MatchMode:"Substring"}, "錨點 收單成功", T, false)
-        Sleep(CFG.sysSleep * 3)
-	ClickEl(WaitFor({Type:"Text", Name:"確定", MatchMode:"Substring"}, "第7步 收單確定", T))
+        confirmBtn := WaitFor({Type:"Text", Name:"確定", MatchMode:"Substring"}, "第7步 收單確定", T)
+        Sleep(CFG.smsConfirmDelay)   ; 偵測到「確定」後再多等一下：元素可能已在 UIA 樹上、但按鈕尚未完全就緒，太早點會沒點到
+        ClickEl(confirmBtn)
 
     } catch as err {
         EndGuard()   ; 先解鎖，錯誤框才能用滑鼠關閉
