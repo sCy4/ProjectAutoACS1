@@ -122,8 +122,9 @@ global CFG := {
     sysDelay:      30,                      ; Ctrl+Win+P／C 的 SetKeyDelay（毫秒）
     sysSleep:      40,                      ; Ctrl+Win+P／S 流程內的短暫等待（毫秒）
     stepTimeout:   5000,                    ; 送簡訊每一步的最長等待（毫秒，^#s 用）
-    smsConfirmDelay: 300,                   ; ^#s 最後「收單成功」框：偵測到「確定」後，點擊前再多等這段時間（毫秒）
-                                            ;   —— 若最後一步偶爾沒點到「確定」，把這個值調大（如 500、800）即可。
+    smsConfirmDelay: 150,                   ; ^#s 最後「收單成功」框：每次點「確定」後、再判斷是否關閉前，等這段時間（毫秒）
+                                            ;   —— 現已改為「反覆點到成功框關閉」的重試機制，故此值可調短。
+                                            ;      太短：可能多點幾次（無害）；太長：收工稍慢。100～200 通常剛好。
 
     ; ── Ctrl+Win+C 行為 ──
     clipMaxLen:    20                       ; 沒選取文字時，剪貼簿英數字超過此字數就拒絕（防呆）
@@ -392,11 +393,33 @@ HotkeySendSms() {
         Send("{Enter}")
         Sleep(CFG.sysSleep * 2.4)
 
-        ; ⑦ 收單成功框「確定」：先等「簡訊中心收單成功！」，再點
+        ; ⑦ 收單成功框「確定」：反覆點到成功框關閉為止（避免偶爾單次沒點到而卡在最後一步）
+        ;    先等「簡訊中心收單成功！」出現當錨點，再進迴圈：
+        ;      每輪 →（一）確認成功框還在（沒關才動作，避免關閉後誤點到頁面上其他「確定」）
+        ;           →（二）抓「確定」點一次 → 等 smsConfirmDelay → 回頭重判
+        ;    成功框消失＝已關閉，break 收工；逾時（T）仍未關才丟例外。
         WaitFor({Type:"Text", Name:"簡訊中心收單成功！", MatchMode:"Substring"}, "錨點 收單成功", T, false)
-        confirmBtn := WaitFor({Type:"Text", Name:"確定", MatchMode:"Substring"}, "第7步 收單確定", T)
-        Sleep(CFG.smsConfirmDelay)   ; 偵測到「確定」後再多等一下：元素可能已在 UIA 樹上、但按鈕尚未完全就緒，太早點會沒點到
-        ClickEl(confirmBtn)
+        endTime := A_TickCount + T
+        Loop {
+            root := UIA.ElementFromHandle(WinActive("A"))   ; 每輪重抓作用中視窗
+
+            ; （一）成功框還在嗎？消失＝已關閉 → 收工（FindElement 找不到會丟例外，故 try＋三元）
+            boxOpen := false
+            try boxOpen := root.FindElement({Type:"Text", Name:"簡訊中心收單成功！", MatchMode:"Substring"}) ? true : false
+            if (!boxOpen)
+                break
+
+            ; （二）成功框還在 → 抓「確定」點一次（抓不到或尚未就緒就這輪略過，下一輪再試）
+            try {
+                confirmBtn := root.FindElement({Type:"Text", Name:"確定", MatchMode:"Substring"})
+                if (confirmBtn.IsEnabled && !confirmBtn.IsOffscreen)
+                    ClickEl(confirmBtn)
+            }
+
+            Sleep(CFG.smsConfirmDelay)   ; 點完等一小段，讓框有時間關閉，再回頭重判
+            if (A_TickCount > endTime)
+                throw Error(Format(MSG_STEP_TIMEOUT, "第7步 收單確定", T))
+        }
 
     } catch as err {
         EndGuard()   ; 先解鎖，錯誤框才能用滑鼠關閉
