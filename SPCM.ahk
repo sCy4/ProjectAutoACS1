@@ -401,22 +401,41 @@ HotkeySendSms() {
         WaitFor({Type:"Text", Name:"簡訊中心收單成功！", MatchMode:"Substring"}, "錨點 收單成功", T, false)
         endTime := A_TickCount + T
         Loop {
-            root := UIA.ElementFromHandle(WinActive("A"))   ; 每輪重抓作用中視窗
-
-            ; （一）成功框還在嗎？消失＝已關閉 → 收工（FindElement 找不到會丟例外，故 try＋三元）
-            boxOpen := false
-            try boxOpen := root.FindElement({Type:"Text", Name:"簡訊中心收單成功！", MatchMode:"Substring"}) ? true : false
-            if (!boxOpen)
-                break
-
-            ; （二）成功框還在 → 抓「確定」點一次（抓不到或尚未就緒就這輪略過，下一輪再試）
+            ; 每輪重抓作用中視窗。關框的瞬間可能「短暫沒有任何作用中視窗」，
+            ; 此時 UIA.ElementFromHandle(WinActive("A")) 會丟「No matching window found」。
+            ; 整段包在 try 裡當暫時性失敗處理（gotWin 維持 false → 不 break、續等重試），
+            ; 避免這種轉場瞬間直接中斷整個流程。
+            gotWin := false, boxOpen := false
             try {
-                confirmBtn := root.FindElement({Type:"Text", Name:"確定", MatchMode:"Substring"})
-                if (confirmBtn.IsEnabled && !confirmBtn.IsOffscreen)
-                    ClickEl(confirmBtn)
+                root := UIA.ElementFromHandle(WinActive("A"))
+                gotWin := true
+
+                ; （一）成功框還在嗎？（FindElement 找不到會丟例外 → boxOpen 維持 false）
+                try boxOpen := root.FindElement({Type:"Text", Name:"簡訊中心收單成功！", MatchMode:"Substring"}) ? true : false
+
+                ; （二）成功框還在 → 送出「確定」。
+                ;   主：鍵盤 {Enter}——此框為前景 modal、確定為預設鍵，與第6步同理，
+                ;       瀏覽器環境下鍵盤最可靠（守門只吞滑鼠、不吞鍵盤）。
+                ;       過去只靠 UIA 點「確定」Text 元素，在 Chrome 上有時「點了沒反應」，
+                ;       導致框一直關不掉直到逾時——改以鍵盤為主即可避開。
+                ;   副：再用 UIA 點一下當備援（萬一 modal 沒拿到鍵盤焦點）。
+                ;       若 Enter 已把框關掉，這裡會找不到「確定」而自動略過，不會誤點頁面。
+                if (boxOpen) {
+                    Send("{Enter}")
+                    try {
+                        confirmBtn := root.FindElement({Type:"Text", Name:"確定", MatchMode:"Substring"})
+                        if (confirmBtn.IsEnabled && !confirmBtn.IsOffscreen)
+                            ClickEl(confirmBtn)
+                    }
+                }
             }
 
-            Sleep(CFG.smsConfirmDelay)   ; 點完等一小段，讓框有時間關閉，再回頭重判
+            ; 只有「這輪確實抓到作用中視窗、且成功框已不在」才算真的關閉 → 收工。
+            ; 若連視窗都沒抓到（gotWin=false），是轉場瞬間，續等重試，不可誤判為關閉。
+            if (gotWin && !boxOpen)
+                break
+
+            Sleep(CFG.smsConfirmDelay)   ; 等一小段讓框有時間關閉／視窗回穩，再回頭重判
             if (A_TickCount > endTime)
                 throw Error(Format(MSG_STEP_TIMEOUT, "第7步 收單確定", T))
         }
