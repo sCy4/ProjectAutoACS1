@@ -477,19 +477,10 @@ ShowSettings(*) {
     g_settingsGui.BackColor := "FFFFFF"
     g_settingsGui.SetFont("s10 c" CLR_TEXT, UI_FONT)
 
-    ; +0x0400 = TCS_FIXEDWIDTH：分頁標籤改為固定等寬（寬度由下方 TCM_SETITEMSIZE 指定）
+    ; +0x0400 = TCS_FIXEDWIDTH：分頁標籤改為固定等寬（實際寬度於視窗顯示後才量測套用，見 Show 之後的 SizeTabsEqually）
     g_tab := g_settingsGui.Add("Tab3", "x16 y16 w568 h508 -Background +0x0400",
         [TAB_SIGN, TAB_PROBLEM, TAB_MONITOR, TAB_PASTE])
-    g_tab.SetFont("s10 bold", UI_FONT)     ; 分頁標題加粗（要先設好字型，下面量到的標籤高度才正確）
-
-    ; 讓四個分頁標籤等寬並佔滿整列：先量出目前標籤高度，再把每個標籤寬設為「控制項內寬÷4」
-    rcItem := Buffer(16, 0)
-    SendMessage(0x130A, 0, rcItem.Ptr, g_tab)                     ; TCM_GETITEMRECT：取第一個標籤的矩形（只拿高度）
-    tabH := NumGet(rcItem, 12, "Int") - NumGet(rcItem, 4, "Int")
-    rcClient := Buffer(16, 0)
-    DllCall("GetClientRect", "Ptr", g_tab.Hwnd, "Ptr", rcClient)
-    tabW := (NumGet(rcClient, 8, "Int") - 4) // 4                 ; -4：預留左右內縮，避免最後一個標籤被擠成第二排/捲動箭頭
-    SendMessage(0x1329, 0, (tabH << 16) | tabW, g_tab)            ; TCM_SETITEMSIZE：套用固定寬(低位)高(高位)
+    g_tab.SetFont("s10 bold", UI_FONT)     ; 分頁標題加粗（要先設好字型，之後量到的標籤高度才正確）
 
     ; --- 分頁1：快速簽收 ---
     g_tab.UseTab(1)
@@ -534,7 +525,47 @@ ShowSettings(*) {
     g_settingsGui.OnEvent("Close", Settings_Cancel)
     g_settingsGui.OnEvent("Escape", Settings_Cancel)
 
-    g_settingsGui.Show("w600 h590")
+    ; 先以最終尺寸「建立但不顯示」視窗：此時控制項尺寸已定案且含 DPI 縮放，量測才可靠。
+    ; 調整完分頁寬度後才真正顯示，畫面一次到位（不會有先畫錯再重繪造成的閃爍或補畫）。
+    g_settingsGui.Show("Hide w600 h590")
+    SizeTabsEqually(g_tab)
+    g_settingsGui.Show()
+}
+
+; 讓分頁標籤等寬且佔滿整列
+;   ．必須在 Show("Hide") 之後、真正 Show() 之前呼叫，量到的尺寸才正確且不會造成重繪問題
+;   ．套用後會回頭驗證最後一個標籤有沒有超出可視範圍，超出就自動縮窄重試
+;   ．任何一步量到異常值就直接放棄，退回原生自動寬度（四個標籤仍全部顯示，只是靠左），絕不弄壞版面
+SizeTabsEqually(tab) {
+    static TCM_GETITEMCOUNT := 0x1304, TCM_GETITEMRECT := 0x130A, TCM_SETITEMSIZE := 0x1329
+
+    n := SendMessage(TCM_GETITEMCOUNT, 0, 0, tab)
+    if (n < 1)
+        return
+
+    rc := Buffer(16, 0)
+    if !DllCall("GetClientRect", "Ptr", tab.Hwnd, "Ptr", rc)
+        return
+    cw := NumGet(rc, 8, "Int")
+    if (cw < 100)                 ; 尺寸異常（未實體化／被縮到極小）→ 放棄，維持原生寬度
+        return
+
+    SendMessage(TCM_GETITEMRECT, 0, rc.Ptr, tab)                 ; 取第一個標籤矩形（只拿高度）
+    tabH := NumGet(rc, 12, "Int") - NumGet(rc, 4, "Int")
+    if (tabH < 8 || tabH > 200)   ; 高度異常也放棄，避免送出垃圾值把標籤撐爆
+        return
+
+    ; 逐次加大預留邊距重試：不同 DPI／視覺樣式下，標籤本身的內部邊距不盡相同，
+    ; 與其猜一個固定值，不如套用後直接量最後一個標籤是否超界，超界就縮窄再試。
+    for pad in [4, 12, 20, 28, 40, 56] {
+        tabW := (cw - pad) // n
+        if (tabW < 1)
+            return
+        SendMessage(TCM_SETITEMSIZE, 0, (tabH << 16) | tabW, tab)   ; 寬在低 16 位、高在高 16 位
+        SendMessage(TCM_GETITEMRECT, n - 1, rc.Ptr, tab)            ; 量最後一個標籤（索引從 0 起算）
+        if (NumGet(rc, 8, "Int") <= cw)                             ; 右緣沒超出可視寬度 → 四個都塞得下，收工
+            return
+    }
 }
 
 ; 分頁頂端的灰色說明文字（小一號字）
